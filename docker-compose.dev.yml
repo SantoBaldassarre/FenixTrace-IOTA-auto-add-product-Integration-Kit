@@ -1,0 +1,25 @@
+services:
+  fenixtrace-kit-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: fenixtrace-integration-kit-dev
+    ports:
+      - "${PORT:-3005}:3005"
+      - "9229:9229"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

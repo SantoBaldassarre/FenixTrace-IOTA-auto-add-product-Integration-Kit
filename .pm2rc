@@ -1,0 +1,24 @@
+# PM2 Configuration File
+# This file contains additional PM2 settings
+
+# Enable PM2 Plus monitoring (optional)
+# PM2_PUBLIC_KEY=your_public_key
+# PM2_SECRET_KEY=your_secret_key
+
+# Default settings
+PM2_HOME=/Users/santo/.pm2
+PM2_UPDATE_NOTIFIER=false
+PM2_KILL_TIMEOUT=5000
+PM2_GRACEFUL_TIMEOUT=8000
+
+# Logging settings
+PM2_LOG_DATE_FORMAT=YYYY-MM-DD HH:mm:ss Z
+PM2_DISABLE_LOGS=false
+
+# Performance settings
+PM2_CONCURRENT_ACTIONS=2
+PM2_INTERACTOR_BUFFER_SIZE=1024
+
+# Health check settings
+PM2_HEALTH_CHECK_INTERVAL=30000
+PM2_HEALTH_CHECK_TIMEOUT=5000

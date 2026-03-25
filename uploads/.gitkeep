@@ -1,0 +1,3 @@
+# This folder contains files to be processed automatically
+# Files uploaded here will be processed by the scheduler and uploaded to IPFS
+# Blockchain transactions will be sent automatically
