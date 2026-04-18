@@ -11,7 +11,26 @@ const logger = require('./logger');
 require('dotenv').config();
 
 const app = express();
-app.use(express.json());
+// Cap JSON bodies at 256 KB: the kit only receives small admin payloads
+// (e.g. cleanup options), never arbitrary blobs.
+app.use(express.json({ limit: '256kb' }));
+
+// --- Security helpers ---------------------------------------------------
+const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
+const sanitizeFilename = (value) => {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    if (!raw) return null;
+    if (raw.length > 128) return null;
+    // Reject any separator or parent reference up front.
+    if (!SAFE_NAME.test(raw)) return null;
+    if (raw === '.' || raw === '..') return null;
+    return raw;
+};
+const clampInt = (value, { min, max, fallback }) => {
+    const parsed = typeof value === 'number' ? value : parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    return Math.max(min, Math.min(max, Math.trunc(parsed)));
+};
 
 // Middleware for API request logging
 app.use((req, res, next) => {
@@ -755,7 +774,7 @@ app.get('/ping', (req, res) => {
 
 app.get('/balance', async (req, res) => {
     try {
-        const filesCount = req.query.files ? parseInt(req.query.files) : 1;
+        const filesCount = clampInt(req.query.files, { min: 1, max: 10000, fallback: 1 });
         const estimatedBudgetPerFile = (IOTA_GAS_BUDGET || 0) + (IOTA_NOTARIZATION_GAS_BUDGET || 0);
         const totalEstimatedBudget = estimatedBudgetPerFile * filesCount;
         
@@ -822,30 +841,40 @@ app.post('/process-all', async (req, res) => {
 
 app.post('/process/:filename', async (req, res) => {
     try {
-        const { filename } = req.params;
-        
+        const filename = sanitizeFilename(req.params.filename);
+
+        if (!filename || !filename.endsWith('.json')) {
+            logger.warn('Attempt to process invalid or non-JSON filename', {
+                filename: req.params.filename,
+            });
+            return res.status(400).json({
+                error: 'Invalid file',
+                message: 'Filename must contain only [A-Za-z0-9._-] and end with .json',
+            });
+        }
+
         logger.info('Request to process single product via API', {
             filename,
             endpoint: '/process/:filename'
         });
-        
-        if (!filename.endsWith('.json')) {
-            logger.warn('Attempt to process non-JSON file', { filename });
+
+        const uploadsDir = path.resolve(__dirname, 'uploads');
+        const filePath = path.resolve(uploadsDir, filename);
+        if (!filePath.startsWith(uploadsDir + path.sep)) {
+            logger.warn('Attempt to process file outside uploads dir', { filename });
             return res.status(400).json({
-                error: 'Invalid file',
-                message: 'File must be a JSON'
+                error: 'Invalid path',
+                message: 'File must live inside the uploads directory',
             });
         }
-        
-        const filePath = path.join(__dirname, 'uploads', filename);
         if (!fs.existsSync(filePath)) {
-            logger.warn('Attempt to process non-existent file', { filename, filePath });
+            logger.warn('Attempt to process non-existent file', { filename });
             return res.status(404).json({
                 error: 'File not found',
                 message: `File ${filename} does not exist in uploads folder`
             });
         }
-        
+
         console.log(`\n🎯 Processing single product: ${filename}`);
         const result = await processProductFile(filename);
         
@@ -933,9 +962,14 @@ app.get('/logs', (req, res) => {
 // Endpoint to read a specific log file
 app.get('/logs/:filename', (req, res) => {
     try {
-        const { filename } = req.params;
-        const { lines } = req.query;
-        
+        const filename = sanitizeFilename(req.params.filename);
+        if (!filename || !filename.endsWith('.log')) {
+            return res.status(400).json({
+                error: 'Invalid filename',
+                message: 'Filename must contain only [A-Za-z0-9._-] and end with .log',
+            });
+        }
+
         const logContent = logger.readLogFile(filename);
         if (!logContent) {
             return res.status(404).json({
@@ -943,14 +977,14 @@ app.get('/logs/:filename', (req, res) => {
                 message: `File ${filename} does not exist`
             });
         }
-        
+
         let content = logContent;
-        if (lines) {
+        if (req.query.lines !== undefined) {
+            const numLines = clampInt(req.query.lines, { min: 1, max: 10000, fallback: 500 });
             const logLines = content.split('\n');
-            const numLines = parseInt(lines);
             content = logLines.slice(-numLines).join('\n');
         }
-        
+
         res.json({
             filename,
             content,
@@ -970,7 +1004,7 @@ app.get('/logs/:filename', (req, res) => {
 // Endpoint to clean old logs
 app.post('/logs/cleanup', (req, res) => {
     try {
-        const { daysToKeep = 7 } = req.body;
+        const daysToKeep = clampInt(req.body?.daysToKeep, { min: 1, max: 3650, fallback: 7 });
         logger.clearOldLogs(daysToKeep);
         res.json({
             message: `Logs older than ${daysToKeep} days successfully deleted`
