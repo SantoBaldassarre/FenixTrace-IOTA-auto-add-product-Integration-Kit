@@ -32,7 +32,7 @@ Each product gets:
 | Requirement                       | Details                                                                       |
 | --------------------------------- | ----------------------------------------------------------------------------- |
 | **Node.js**                 | v16+ (v18 LTS recommended)                                                    |
-| **FenixTrace Subscription** | Active plan on[trace.fenixsoftwarelabs.com](https://trace.fenixsoftwarelabs.com) |
+| **FenixTrace Subscription** | Active plan on[fenixtrace.com](https://fenixtrace.com) |
 | **IOTA Wallet**             | Generated via `node generate-wallet.js`                                     |
 | **Delegate Access**         | Your wallet must be added as a delegate from the FenixTrace Company Dashboard |
 | **Pinata Account**          | Your own API keys from[app.pinata.cloud](https://app.pinata.cloud)               |
@@ -98,11 +98,11 @@ Open `.env` and fill in:
 | `IOTA_PRIVATE_KEY`                 | `wallet-keys.json` → `privateKeyBech32` field                                                                     |
 | `IOTA_PACKAGE_ID`                  | FenixTrace Dashboard or provided during onboarding                                                                     |
 | `IOTA_MODULE_COMPANY_SUPPLY_CHAIN` | Same package ID +`::company_supply_chain`                                                                            |
-| `IOTA_COMPANY_OBJECT_ID`           | FenixTrace Dashboard → Company Settings, or via API:`curl https://trace.fenixsoftwarelabs.com/api/public/companies` |
+| `IOTA_COMPANY_OBJECT_ID`           | FenixTrace Dashboard → Company Settings, or via API:`curl https://fenixtrace.com/api/public/companies` |
 | `PINATA_API_KEY`                   | [app.pinata.cloud](https://app.pinata.cloud) → API Keys                                                                  |
 | `PINATA_SECRET_API_KEY`            | Same page on Pinata                                                                                                    |
 | `PINATA_JWT`                       | Same page on Pinata                                                                                                    |
-| `FENIXTRACE_API_BASE_URL`          | `http://localhost:3000` (dev) or `https://trace.fenixsoftwarelabs.com` (prod)                                      |
+| `FENIXTRACE_API_BASE_URL`          | `http://localhost:3000` (dev) or `https://fenixtrace.com` (prod)                                      |
 
 ### 6. Start the Server
 
@@ -387,7 +387,7 @@ Request tokens from the faucet (see above). Each product needs ~0.2 IOTA.
 Set `IOTA_COMPANY_OBJECT_ID` in `.env`. Find it via:
 
 ```bash
-curl https://trace.fenixsoftwarelabs.com/api/public/companies
+curl https://fenixtrace.com/api/public/companies
 ```
 
 Look for your company's `contractAddress` field.
@@ -475,10 +475,10 @@ Each plugin handles:
 
 ## Links
 
-- [FenixTrace Platform](https://trace.fenixsoftwarelabs.com)
-- [FenixTrace Scanner](https://trace.fenixsoftwarelabs.com/scanner)
-- [FenixTrace API Docs](https://trace.fenixsoftwarelabs.com/docs/api)
-- [FenixTrace Integration Docs](https://trace.fenixsoftwarelabs.com/docs/integration-gateway)
+- [FenixTrace Platform](https://fenixtrace.com)
+- [FenixTrace Scanner](https://fenixtrace.com/scanner)
+- [FenixTrace API Docs](https://fenixtrace.com/docs/api)
+- [FenixTrace Integration Docs](https://fenixtrace.com/docs/integration-gateway)
 - [Plugin Odoo](https://github.com/SantoBaldassarre/FenixTrace-IOTA-Plugin-Odoo)
 - [Plugin WooCommerce](https://github.com/SantoBaldassarre/FenixTrace-IOTA-Plugin-WooCommerce)
 - [Plugin PrestaShop](https://github.com/SantoBaldassarre/FenixTrace-IOTA-Plugin-PrestaShop)
