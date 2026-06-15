@@ -59,6 +59,13 @@ const IOTA_GAS_BUDGET = process.env.IOTA_GAS_BUDGET ? Number(process.env.IOTA_GA
 const IOTA_NOTARIZATION_GAS_BUDGET = process.env.IOTA_NOTARIZATION_GAS_BUDGET ? Number(process.env.IOTA_NOTARIZATION_GAS_BUDGET) : IOTA_GAS_BUDGET;
 const FENIXTRACE_API_BASE_URL = (process.env.FENIXTRACE_API_BASE_URL || process.env.FRONTEND_API_BASE_URL || '').trim().replace(/\/$/, '');
 const FENIXTRACE_NOTARIZATION_ENDPOINT = process.env.FENIXTRACE_NOTARIZATION_ENDPOINT || '/api/notarization';
+
+// API MODE: when an ftrace_ key is configured, FenixTrace signs add_product AND
+// notarizes server-side in the background. The kit then needs NO wallet private
+// key and pays NO gas — it just uploads to IPFS and POSTs the product.
+const FENIXTRACE_API_KEY = (process.env.FENIXTRACE_API_KEY || '').trim();
+const FENIXTRACE_PRODUCTS_ENDPOINT = process.env.FENIXTRACE_PRODUCTS_ENDPOINT || '/api/v1/products';
+const API_MODE = Boolean(FENIXTRACE_API_KEY);
 const iotaClient = new IotaClient({ url: IOTA_NODE_URL });
 
 const parseSecretKey = (value) => {
@@ -83,9 +90,18 @@ const getKeypair = () => {
     return Ed25519Keypair.fromSecretKey(parseSecretKey(key));
 };
 
-const keypair = getKeypair();
+// Wallet key is OPTIONAL in API mode (FenixTrace signs server-side). In
+// legacy/local-signing mode it is still required.
+let keypair = null;
+try {
+    keypair = getKeypair();
+} catch (e) {
+    if (!API_MODE) throw e;
+    console.log('ℹ️  No wallet key configured — running in API mode (FenixTrace signs server-side).');
+}
 
 const getWalletAddress = () => {
+    if (!keypair) return '';
     const pub = keypair.getPublicKey();
     return pub.toIotaAddress?.() || pub.toSuiAddress?.() || pub.toAddress?.() || '';
 };
@@ -107,6 +123,10 @@ let isAutoProcessingActive = false;
  * @returns {Promise<{sufficient: boolean, balance: string, required: string, balanceBaseUnits: bigint}>}
  */
 async function checkWalletBalance(requiredBaseUnits = 0) {
+    if (API_MODE || !keypair) {
+        // API mode: FenixTrace pays gas server-side; no local balance required.
+        return { sufficient: true, balance: '0', required: String(requiredBaseUnits || 0), balanceBaseUnits: 0n };
+    }
     try {
         const { balance } = await fetchWalletBalance();
         const estimatedCost = BigInt(requiredBaseUnits || 0);
@@ -133,6 +153,9 @@ async function checkWalletBalance(requiredBaseUnits = 0) {
 }
 
 async function fetchWalletBalance() {
+    if (!keypair) {
+        return { balance: '0', raw: null };
+    }
     const owner = getWalletAddress();
     if (!owner) {
         throw new Error('Wallet address not resolved');
@@ -337,16 +360,41 @@ async function uploadToIPFS(filePath, fileName) {
  * @param {string} ipfsHash - IPFS hash of the product file
  * @returns {Promise<string>} - Transaction hash
  */
-async function addProductToBlockchain(productName, ipfsHash) {
+async function addProductToBlockchain(productName, ipfsHash, productData = null) {
     const startTime = Date.now();
     try {
         logger.info(`Starting product addition to blockchain`, {
             productName,
             ipfsHash
         });
-        
+
         console.log(`🔗 Adding product ${productName} to blockchain...`);
-        
+
+        // API MODE: hand the product to FenixTrace, which uploads to IPFS (if
+        // only raw data is sent), signs add_product AND notarizes server-side
+        // with the company's key. No local wallet, no gas, no Pinata keys.
+        if (API_MODE) {
+            if (!FENIXTRACE_API_BASE_URL) {
+                throw new Error('FENIXTRACE_API_BASE_URL not configured');
+            }
+            const url = `${FENIXTRACE_API_BASE_URL}${FENIXTRACE_PRODUCTS_ENDPOINT.startsWith('/') ? '' : '/'}${FENIXTRACE_PRODUCTS_ENDPOINT}`;
+            // Prefer an already-uploaded CID; otherwise send the raw product data
+            // and let FenixTrace do the IPFS upload server-side.
+            const payload = ipfsHash
+                ? { name: productName, ipfsHash }
+                : { name: productName, data: productData || { name: productName } };
+            const response = await axios.post(
+                url,
+                payload,
+                { headers: { 'Authorization': `Bearer ${FENIXTRACE_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 60000 },
+            );
+            const apiTxHash = response?.data?.digest || '';
+            const apiIpfsHash = response?.data?.ipfsHash || ipfsHash || '';
+            logger.transaction(apiTxHash, 'addProduct via FenixTrace API', { productName, ipfsHash: apiIpfsHash, executionTime: `${Date.now() - startTime}ms` });
+            console.log(`✅ Product ${productName} registered + notarized via FenixTrace API. Hash: ${apiTxHash}`);
+            return apiTxHash;
+        }
+
         if (!IOTA_NODE_URL) {
             throw new Error('IOTA node URL not configured');
         }
@@ -439,17 +487,18 @@ async function processProductFile(fileName) {
         console.log(`\n🚀 Processing product: ${productName}`);
         console.log(`📁 File: ${fileName}`);
         
-        // 1. Upload file to IPFS
-        const ipfsHash = await uploadToIPFS(filePath, fileName);
-        
-        // 2. Add product to blockchain
-        const txHash = await addProductToBlockchain(productName, ipfsHash);
-        
-        const notarizationTxHash = await notarizeProductDeposit({
-            sourceTransactionHash: txHash,
-            productName,
-            ipfsHash
-        });
+        // 1. In API mode FenixTrace does the IPFS upload server-side; in legacy
+        // mode the kit uploads here with its own Pinata keys.
+        const ipfsHash = API_MODE ? null : await uploadToIPFS(filePath, fileName);
+
+        // 2. Add product to blockchain (API mode: IPFS + sign + notarize server-side)
+        const txHash = await addProductToBlockchain(productName, ipfsHash, productData);
+
+        // In API mode FenixTrace already notarized; only notarize locally in
+        // legacy/local-signing mode.
+        const notarizationTxHash = API_MODE
+            ? null
+            : await notarizeProductDeposit({ sourceTransactionHash: txHash, productName, ipfsHash });
 
         const processingTime = Date.now() - startTime;
         const result = {
@@ -458,7 +507,7 @@ async function processProductFile(fileName) {
             ipfsHash,
             txHash,
             notarizationTxHash,
-            ipfsUrl: getIPFSUrl(ipfsHash),
+            ipfsUrl: ipfsHash ? getIPFSUrl(ipfsHash) : null,
             success: true
         };
         
@@ -476,7 +525,7 @@ async function processProductFile(fileName) {
                     ipfsCid: ipfsHash,
                     transactionHash: txHash,
                     notarizationTransactionHash: notarizationTxHash,
-                    ipfsUrl: getIPFSUrl(ipfsHash),
+                    ipfsUrl: ipfsHash ? getIPFSUrl(ipfsHash) : null,
                     uploadedAt: new Date().toISOString(),
                     processingTime: `${Date.now() - startTime}ms`
                 },
