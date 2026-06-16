@@ -1,7 +1,7 @@
 # FenixTrace Integration Kit
 
-Standalone Node.js server that lets you register products on the **IOTA L1** blockchain and pin metadata to **IPFS** — fully automated.
-Drop a JSON file into the `uploads/` folder (or call the REST API) and the kit handles everything: IPFS upload, on-chain `add_product` transaction, and notarization via the FenixTrace platform.
+Standalone Node.js server that registers your products on **FenixTrace** — fully automated.
+Drop a JSON file into the `uploads/` folder (or call the REST API) and the kit uploads it to FenixTrace with your **API key**. FenixTrace then handles everything server-side: IPFS pinning, the on-chain `add_product` transaction, and notarization.
 
 > **Built by [Fenix Software Labs](https://www.fenixsoftwarelabs.com)** — the team behind FenixTrace.
 
@@ -10,13 +10,15 @@ Drop a JSON file into the `uploads/` folder (or call the REST API) and the kit h
 ## How It Works
 
 ```
- Your System          Integration Kit              IOTA L1 + IPFS
- ──────────           ───────────────              ───────────────
-  JSON file   ──►  1. Upload to IPFS (Pinata)  ──►  IPFS CID
-                   2. add_product on-chain     ──►  Tx Hash
-                   3. Notarize on-chain        ──►  Notarization Tx
-                   4. Move file to processed/
+ Your System          Integration Kit              FenixTrace (server-side)
+ ──────────           ───────────────              ────────────────────────
+  JSON file   ──►  1. Read from uploads/      ──►  IPFS pinning (CID)
+                   2. POST /api/v1/products    ──►  on-chain add_product (Tx)
+                      (with FENIXTRACE_API_KEY)──►  notarization (Tx)
+                   3. Move file to processed/
 ```
+
+The kit holds **no wallet, no private key, no gas, and no IPFS keys**. It only authenticates with your FenixTrace API key and forwards product data. FenixTrace performs signing, IPFS, and notarization for you.
 
 Each product gets:
 
@@ -29,14 +31,13 @@ Each product gets:
 
 ## Prerequisites
 
-| Requirement                       | Details                                                                       |
-| --------------------------------- | ----------------------------------------------------------------------------- |
-| **Node.js**                 | v16+ (v18 LTS recommended)                                                    |
-| **FenixTrace Subscription** | Active plan on[fenixtrace.com](https://fenixtrace.com) |
-| **IOTA Wallet**             | Generated via `node generate-wallet.js`                                     |
-| **Delegate Access**         | Your wallet must be added as a delegate from the FenixTrace Company Dashboard |
-| **Pinata Account**          | Your own API keys from[app.pinata.cloud](https://app.pinata.cloud)               |
-| **IOTA Tokens**             | Testnet faucet or mainnet IOTA for gas fees                                   |
+| Requirement                 | Details                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------- |
+| **Node.js**                 | v16+ (v18 LTS recommended)                                                               |
+| **FenixTrace Subscription** | Active plan on [fenixtrace.com](https://fenixtrace.com)                                  |
+| **FenixTrace API Key**      | Generated from the dashboard → **Chiavi API** (format `ftrace_<id>_<secret>`)            |
+
+No wallet, no gas, and no Pinata/IPFS account are required on your side — FenixTrace handles signing, IPFS pinning, and notarization server-side.
 
 ---
 
@@ -50,42 +51,12 @@ cd FenixTrace-IOTA-auto-add-product-Integration-Kit
 npm install
 ```
 
-### 2. Generate a Wallet
+### 2. Generate an API Key
 
-```bash
-node generate-wallet.js
-```
+Log in to your **FenixTrace Dashboard** → **Chiavi API** → **Generate API Key**.
+Copy the key — it looks like `ftrace_<id>_<secret>`. The secret is shown only once, so store it safely.
 
-This creates `wallet-keys.json` with your address, mnemonic, and private key.
-**Keep this file safe — never commit it to version control.**
-
-### 3. Add Wallet as Delegate
-
-Go to your **FenixTrace Company Dashboard** → **Delegate Management** tab → **Add Delegate**.
-Enter the wallet address from `wallet-keys.json`.
-
-### 4. Get Testnet Tokens (Testnet Only)
-
-Request free test IOTA tokens from the faucet:
-
-```bash
-curl -X POST "https://faucet.testnet.iota.cafe/gas" \
-  -H "Content-Type: application/json" \
-  -d '{"FixedAmountRequest":{"recipient":"YOUR_WALLET_ADDRESS"}}'
-```
-
-Replace `YOUR_WALLET_ADDRESS` with the address from `wallet-keys.json`.
-
-You should receive **10 IOTA** (10,000,000,000 base units). Each product costs ~0.2 IOTA (two transactions), so 10 IOTA covers ~50 products.
-
-**Verify your balance:**
-
-```bash
-# After starting the server:
-curl http://localhost:3005/balance
-```
-
-### 5. Configure Environment
+### 3. Configure Environment
 
 ```bash
 cp .env.example .env
@@ -93,18 +64,14 @@ cp .env.example .env
 
 Open `.env` and fill in:
 
-| Variable                             | Where to Find It                                                                                                       |
-| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `IOTA_PRIVATE_KEY`                 | `wallet-keys.json` → `privateKeyBech32` field                                                                     |
-| `IOTA_PACKAGE_ID`                  | FenixTrace Dashboard or provided during onboarding                                                                     |
-| `IOTA_MODULE_COMPANY_SUPPLY_CHAIN` | Same package ID +`::company_supply_chain`                                                                            |
-| `IOTA_COMPANY_OBJECT_ID`           | FenixTrace Dashboard → Company Settings, or via API:`curl https://fenixtrace.com/api/public/companies` |
-| `PINATA_API_KEY`                   | [app.pinata.cloud](https://app.pinata.cloud) → API Keys                                                                  |
-| `PINATA_SECRET_API_KEY`            | Same page on Pinata                                                                                                    |
-| `PINATA_JWT`                       | Same page on Pinata                                                                                                    |
-| `FENIXTRACE_API_BASE_URL`          | `http://localhost:3000` (dev) or `https://fenixtrace.com` (prod)                                      |
+| Variable                  | Where to Find It                                                              |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| `FENIXTRACE_API_KEY`      | FenixTrace Dashboard → **Chiavi API** (format `ftrace_<id>_<secret>`)        |
+| `FENIXTRACE_API_BASE_URL` | `https://fenixtrace.com` (prod) or `http://localhost:3000` (dev)             |
 
-### 6. Start the Server
+That's the entire required configuration. The kit needs nothing else to run.
+
+### 4. Start the Server
 
 ```bash
 npm start
@@ -138,9 +105,6 @@ curl -X POST http://localhost:3005/process/my-product.json
 # Check status
 curl http://localhost:3005/status
 
-# Check wallet balance (optionally estimate cost for N files)
-curl "http://localhost:3005/balance?files=20"
-
 # View processed products
 curl http://localhost:3005/processed
 ```
@@ -153,7 +117,7 @@ Your CRM or ERP can write JSON files to the `uploads/` folder (via shared volume
 
 ## Product JSON Format
 
-Each JSON file represents one product to register on-chain.
+Each JSON file represents one product to register on FenixTrace.
 
 ```json
 {
@@ -205,7 +169,7 @@ Each JSON file represents one product to register on-chain.
 }
 ```
 
-> **Only `name` is required.** All other fields are optional and stored as metadata on IPFS.
+> **Only `name` is required.** All other fields are optional and stored as metadata; FenixTrace pins them to IPFS server-side.
 
 ### Supported Templates
 
@@ -215,19 +179,18 @@ Each JSON file represents one product to register on-chain.
 
 ## API Reference
 
-| Method   | Endpoint               | Description                                                   |
-| -------- | ---------------------- | ------------------------------------------------------------- |
-| `GET`  | `/`                  | Server info and available endpoints                           |
-| `GET`  | `/status`            | Wallet address, balance, contract config                      |
-| `GET`  | `/health`            | Full health check (blockchain, filesystem, memory)            |
-| `GET`  | `/ping`              | Simple liveness check (returns `pong`)                      |
-| `GET`  | `/balance`           | Wallet balance. Add `?files=N` to estimate cost for N files |
-| `POST` | `/process-all`       | Process all JSON files in `uploads/`                        |
-| `POST` | `/process/:filename` | Process a single file by name                                 |
-| `GET`  | `/processed`         | List all processed products with metadata                     |
-| `GET`  | `/logs`              | View available log files                                      |
-| `GET`  | `/logs/:filename`    | View a specific log file                                      |
-| `POST` | `/logs/cleanup`      | Clean up old log files                                        |
+| Method | Endpoint             | Description                                        |
+| ------ | -------------------- | -------------------------------------------------- |
+| `GET`  | `/`                  | Server info and available endpoints                |
+| `GET`  | `/status`            | Kit status and FenixTrace API configuration        |
+| `GET`  | `/health`            | Full health check (API reachability, filesystem, memory) |
+| `GET`  | `/ping`              | Simple liveness check (returns `pong`)             |
+| `POST` | `/process-all`       | Process all JSON files in `uploads/`               |
+| `POST` | `/process/:filename` | Process a single file by name                      |
+| `GET`  | `/processed`         | List all processed products with metadata          |
+| `GET`  | `/logs`              | View available log files                           |
+| `GET`  | `/logs/:filename`    | View a specific log file                           |
+| `POST` | `/logs/cleanup`      | Clean up old log files                             |
 
 ---
 
@@ -238,7 +201,7 @@ Each JSON file represents one product to register on-chain.
 ```bash
 # 1. Configure
 cp .env.example .env
-# Edit .env with your values
+# Edit .env with your FENIXTRACE_API_KEY and FENIXTRACE_API_BASE_URL
 
 # 2. Build and start
 docker compose up -d
@@ -276,8 +239,8 @@ docker compose logs -f --tail=50
 # Shell into container
 docker exec -it fenixtrace-integration-kit sh
 
-# Check balance inside container
-docker exec fenixtrace-integration-kit wget -qO- http://localhost:3005/balance
+# Check health inside container
+docker exec fenixtrace-integration-kit wget -qO- http://localhost:3005/health
 ```
 
 ---
@@ -309,110 +272,26 @@ pm2 save
 
 ---
 
-## Testnet Faucet Guide
-
-The IOTA testnet faucet provides free tokens for testing.
-
-### Request Tokens
-
-```bash
-curl -X POST "https://faucet.testnet.iota.cafe/gas" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "FixedAmountRequest": {
-      "recipient": "0xYOUR_WALLET_ADDRESS"
-    }
-  }'
-```
-
-### Expected Response
-
-```json
-{
-  "transferredGasObjects": [
-    {
-      "amount": 10000000000,
-      "id": "0x...",
-      "transferTxDigest": "..."
-    }
-  ],
-  "error": null
-}
-```
-
-### Cost Estimation
-
-| Operation                   | Cost (base units)      | Cost (IOTA)    |
-| --------------------------- | ---------------------- | -------------- |
-| `add_product` transaction | ~100,000,000           | ~0.1           |
-| Notarization transaction    | ~100,000,000           | ~0.1           |
-| **Total per product** | **~200,000,000** | **~0.2** |
-| 10 products                 | ~2,000,000,000         | ~2.0           |
-| 50 products                 | ~10,000,000,000        | ~10.0          |
-
-One faucet request (10 IOTA) covers ~50 products.
-
-### Check Balance
-
-```bash
-curl http://localhost:3005/balance?files=20
-```
-
-Response:
-
-```json
-{
-  "wallet": {
-    "address": "0x...",
-    "balance": "10000000000"
-  },
-  "estimation": {
-    "filesCount": 20,
-    "totalEstimatedCost": "4000000000",
-    "sufficient": true
-  }
-}
-```
-
----
-
 ## Troubleshooting
 
-### "Insufficient balance"
+### "API key not configured"
 
-Request tokens from the faucet (see above). Each product needs ~0.2 IOTA.
+Set `FENIXTRACE_API_KEY` in `.env`. Generate one from the FenixTrace Dashboard → **Chiavi API**.
+The key must be in the format `ftrace_<id>_<secret>`.
 
-### "Company object ID not configured"
+### "Unauthorized" / 401 from FenixTrace
 
-Set `IOTA_COMPANY_OBJECT_ID` in `.env`. Find it via:
+- Verify `FENIXTRACE_API_KEY` is correct and not revoked in the dashboard.
+- Verify `FENIXTRACE_API_BASE_URL` points to the right environment (`https://fenixtrace.com` for prod, `http://localhost:3000` for local dev).
+- Confirm your FenixTrace subscription is active.
 
-```bash
-curl https://fenixtrace.com/api/public/companies
-```
-
-Look for your company's `contractAddress` field.
-
-### "IOTA private key not configured"
-
-Generate a wallet: `node generate-wallet.js`
-Copy `privateKeyBech32` from `wallet-keys.json` to `IOTA_PRIVATE_KEY` in `.env`.
-
-### "Pinata upload failed"
-
-Verify your Pinata credentials at [app.pinata.cloud](https://app.pinata.cloud).
-Test with:
+### "Cannot reach FenixTrace" / connection errors
 
 ```bash
-curl -X POST "https://api.pinata.cloud/pinning/pinJSONToIPFS" \
-  -H "Authorization: Bearer YOUR_PINATA_JWT" \
-  -H "Content-Type: application/json" \
-  -d '{"pinataContent": {"test": true}}'
+curl http://localhost:3005/health
 ```
 
-### "Transaction failed" / "Wallet not authorized"
-
-Your wallet must be a **delegate** of the company on FenixTrace.
-Go to Company Dashboard → Delegate Management → Add your wallet address.
+Check that `FENIXTRACE_API_BASE_URL` is reachable from the kit and that the FenixTrace app is running.
 
 ### Docker: "Container unhealthy"
 
@@ -427,14 +306,12 @@ docker exec fenixtrace-integration-kit wget -qO- http://localhost:3005/health
 
 ```
 .
-├── server.js              # Main server (Express + IOTA SDK)
+├── server.js              # Main server (Express + FenixTrace API client)
 ├── logger.js              # Structured logging
-├── generate-wallet.js     # IOTA wallet generator
 ├── ecosystem.config.js    # PM2 configuration
 ├── package.json
 ├── .env.example           # Environment template
 ├── .env                   # Your configuration (git-ignored)
-├── wallet-keys.json       # Generated wallet (git-ignored)
 ├── Dockerfile
 ├── docker-compose.yml     # Production Docker
 ├── docker-compose.dev.yml # Development Docker
@@ -465,11 +342,10 @@ Each plugin handles:
 
 ## Security Notes
 
-- **Never commit** `.env` or `wallet-keys.json` to version control
-- **Use your own** Pinata IPFS keys — FenixTrace does not provide IPFS storage
-- **Delegate wallets** can only add products, not manage the company
-- **Testnet tokens** have no real value — use them freely for testing
-- **Mainnet**: ensure your wallet has sufficient IOTA balance before processing
+- **Never commit** `.env` to version control — it contains your `FENIXTRACE_API_KEY`.
+- **Treat the API key like a password.** Revoke and regenerate it from the dashboard if it leaks.
+- **No wallet, no private key, no gas, and no Pinata/IPFS keys** are stored by the kit — FenixTrace handles signing, IPFS pinning, and notarization server-side.
+- **Use HTTPS in production** (`https://fenixtrace.com`) so the API key travels encrypted.
 
 ---
 
@@ -483,9 +359,6 @@ Each plugin handles:
 - [Plugin WooCommerce](https://github.com/SantoBaldassarre/FenixTrace-IOTA-Plugin-WooCommerce)
 - [Plugin PrestaShop](https://github.com/SantoBaldassarre/FenixTrace-IOTA-Plugin-PrestaShop)
 - [Fenix Software Labs](https://www.fenixsoftwarelabs.com)
-- [IOTA Testnet Faucet](https://faucet.testnet.iota.cafe)
-- [Pinata IPFS](https://app.pinata.cloud)
-- [IOTA Explorer (Testnet)](https://explorer.iota.cafe)
 
 ---
 

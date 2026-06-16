@@ -1,14 +1,14 @@
 # FenixTrace Integration Kit - Docker Setup
 
-This guide explains how to run the FenixTrace Integration Kit with Docker on IOTA L1.
+This guide explains how to run the FenixTrace Integration Kit with Docker.
 
-The runtime flow is aligned with frontend: each product file is processed with on-chain publish (`add_product`) and notarization (`/api/notarization` queue).
+The kit runs in **API mode**: each product file is uploaded to FenixTrace via `POST /api/v1/products` using your API key. FenixTrace then performs IPFS pinning, the on-chain publish (`add_product`), and notarization server-side. The kit needs no wallet, no gas, and no IPFS keys.
 
 ## Prerequisites
 
 - Docker installed on the system
 - Docker Compose installed
-- `.env` file configured correctly
+- `.env` file configured correctly (a FenixTrace API key)
 
 ## Configuration
 
@@ -20,15 +20,10 @@ The runtime flow is aligned with frontend: each product file is processed with o
 
 2. **Edit the `.env` file with your parameters:**
 
-   - `IOTA_PRIVATE_KEY`: Your IOTA wallet private key (hex)
-   - `IOTA_NODE_URL`: IOTA node URL (e.g. testnet)
-   - `IOTA_PACKAGE_ID`: Published package ID
-   - `IOTA_MODULE_COMPANY_SUPPLY_CHAIN`: Module path (e.g. `<package>::company_supply_chain`)
-   - `IOTA_COMPANY_OBJECT_ID`: Company object ID provided by FenixTrace
-   - `IOTA_NOTARIZATION_GAS_BUDGET`: Gas budget for notarization transaction
-   - `FENIXTRACE_API_BASE_URL`: Base URL of the FenixTrace app exposing `/api/notarization`
-   - `FENIXTRACE_NOTARIZATION_ENDPOINT`: Notarization endpoint path (default: `/api/notarization`)
-   - `PINATA_API_KEY`, `PINATA_SECRET_API_KEY`, `PINATA_JWT`: Pinata credentials
+   - `FENIXTRACE_API_KEY`: Your FenixTrace API key from the dashboard → **Chiavi API** (format `ftrace_<id>_<secret>`)
+   - `FENIXTRACE_API_BASE_URL`: Base URL of the FenixTrace app — `https://fenixtrace.com` (prod) or `http://localhost:3000` (dev)
+
+   These two variables are the only required configuration. No wallet, gas, package IDs, or Pinata/IPFS credentials are needed — FenixTrace handles signing, IPFS pinning, and notarization server-side.
 
 ## Using Docker
 
@@ -93,7 +88,7 @@ Once the container is running, the application is available at `http://localhost
 - `POST /process-all` - Process all files in uploads
 - `POST /process/:filename` - Process a specific file
 
-Each `process` endpoint executes both publish and notarization steps.
+Each `process` endpoint uploads the product to FenixTrace, which performs IPFS pinning, on-chain publish, and notarization server-side.
 
 ## Monitoring
 
@@ -123,22 +118,16 @@ docker-compose ps
 2. Check logs: `docker-compose logs fenixtrace-integration`
 3. Verify the port is not already in use
 
-### IOTA connectivity issues
-
-1. Verify `IOTA_NODE_URL` in `.env`
-2. Check that the private key is valid
-3. Verify the wallet balance
-
-### Notarization queue issues
+### Cannot reach FenixTrace
 
 1. Verify `FENIXTRACE_API_BASE_URL` points to a running FenixTrace app
-2. Verify `FENIXTRACE_NOTARIZATION_ENDPOINT` is correct
-3. Check the FenixTrace app logs for `/api/notarization` errors
+2. Check internet connectivity from the container
+3. Inspect the health endpoint: `curl http://localhost:3005/health`
 
-### IPFS issues
+### Unauthorized / 401 from FenixTrace
 
-1. Verify Pinata credentials in `.env`
-2. Check internet connectivity
+1. Verify `FENIXTRACE_API_KEY` is correct and not revoked in the dashboard
+2. Confirm your FenixTrace subscription is active
 
 ## Updating
 
@@ -179,10 +168,10 @@ tar -czf logs-backup-$(date +%Y%m%d).tar.gz logs/
 
 ## Security
 
-- Never commit the `.env` file to version control
-- Keep the private key secure and never share it
-- Use HTTPS in production
-- Consider Docker secrets for sensitive production data
+- Never commit the `.env` file to version control — it contains your `FENIXTRACE_API_KEY`
+- Treat the API key like a password; revoke and regenerate it from the dashboard if it leaks
+- Use HTTPS in production (`https://fenixtrace.com`) so the API key travels encrypted
+- Consider Docker secrets for the API key in sensitive production setups
 
 ## Production
 
@@ -192,4 +181,4 @@ For production, consider:
 2. **SSL/TLS:** Configure SSL certificates
 3. **Monitoring:** Integrate with monitoring systems like Prometheus
 4. **Automatic backups:** Configure automatic volume backups
-5. **Secrets management:** Use Docker secrets or a vault for sensitive keys
+5. **Secrets management:** Use Docker secrets or a vault for the API key

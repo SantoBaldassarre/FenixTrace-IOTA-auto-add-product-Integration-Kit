@@ -1,6 +1,8 @@
 # Deployment and Production Operations Guide
 
-This guide covers production deployment and operational monitoring for the FenixTrace Integration Kit on IOTA L1.
+This guide covers production deployment and operational monitoring for the FenixTrace Integration Kit.
+
+The kit runs in **API mode**: it authenticates with a FenixTrace API key and uploads product data to FenixTrace via `POST /api/v1/products`. FenixTrace then performs IPFS pinning, the on-chain `add_product` transaction, and notarization server-side. The kit holds no wallet, no gas, and no IPFS keys.
 
 ## ✅ Crash Prevention and Reliability
 
@@ -17,7 +19,7 @@ The project uses PM2 for process resilience and monitoring.
 - `/health` full status check
 - `/ping` lightweight check
 - `/process-all` and `/process/:filename` operational endpoints
-- IOTA connectivity verification
+- FenixTrace API reachability verification
 - Filesystem checks for uploads/processed/logs
 - Basic performance metrics
 
@@ -88,10 +90,9 @@ pm2 delete fenixtrace-integration
     "total": 128,
     "external": 12
   },
-  "blockchain": {
-    "connected": true,
-    "network": "iota-testnet",
-    "walletBalance": "100000000"
+  "fenixtrace": {
+    "apiReachable": true,
+    "baseUrl": "https://fenixtrace.com"
   },
   "filesystem": {
     "uploadsAccessible": true,
@@ -110,31 +111,18 @@ pm2 delete fenixtrace-integration
 ## 🔧 Environment Checklist
 
 ```bash
-IOTA_PRIVATE_KEY=your_iota_private_key_hex_or_bech32
-IOTA_NODE_URL=https://api.testnet.iota.cafe
-IOTA_PACKAGE_ID=your_package_id_here
-IOTA_MODULE_COMPANY_SUPPLY_CHAIN=your_package_id_here::company_supply_chain
-IOTA_COMPANY_OBJECT_ID=your_company_object_id_here
-IOTA_CLOCK_OBJECT=0x6
-IOTA_GAS_BUDGET=100000000
-IOTA_NOTARIZATION_GAS_BUDGET=100000000
-IOTA_COIN_TYPE=0x2::iota::IOTA
-FENIXTRACE_API_BASE_URL=http://localhost:3000
-FENIXTRACE_NOTARIZATION_ENDPOINT=/api/notarization
+# FenixTrace API (required)
+FENIXTRACE_API_KEY=ftrace_<id>_<secret>
+FENIXTRACE_API_BASE_URL=https://fenixtrace.com
 
-PINATA_API_KEY=your_pinata_api_key_here
-PINATA_SECRET_API_KEY=your_pinata_secret_api_key_here
-PINATA_JWT=your_pinata_jwt_token_here
-PINATA_API_URL=https://api.pinata.cloud
-PINATA_GATEWAY_URL=https://gateway.pinata.cloud/ipfs/
-
+# Server / processing (optional, with defaults)
 PORT=3005
 NODE_ENV=production
 AUTO_PROCESS=true
 AUTO_PROCESS_INTERVAL_MINUTES=1
 ```
 
-The integration kit now uses a 2-step publishing flow per product: on-chain `add_product` + on-chain notarization + enqueue on FenixTrace `/api/notarization`.
+These two FenixTrace variables are the only required configuration. The kit uploads each product to FenixTrace, which performs IPFS pinning, the on-chain `add_product` transaction, and notarization server-side — no wallet, gas, or IPFS keys are configured on the kit.
 
 ## 🚨 Troubleshooting
 
@@ -146,21 +134,23 @@ The integration kit now uses a 2-step publishing flow per product: on-chain `add
    pm2 logs fenixtrace-integration --lines 50
    ```
 
-2. **IOTA connection failed**
+2. **Cannot reach FenixTrace**
 
    ```bash
    curl http://localhost:3005/health
    ```
 
-3. **Notarization queue failed**
+   - Verify `FENIXTRACE_API_BASE_URL` is reachable from the kit
+   - Confirm the FenixTrace app is running
+
+3. **Unauthorized / 401 from FenixTrace**
 
    ```bash
    curl http://localhost:3005/status
    ```
 
-   - Verify `FENIXTRACE_API_BASE_URL`
-   - Verify `FENIXTRACE_NOTARIZATION_ENDPOINT`
-   - Check frontend logs for `/api/notarization`
+   - Verify `FENIXTRACE_API_KEY` is correct and not revoked in the dashboard
+   - Confirm your FenixTrace subscription is active
 
 4. **Filesystem not accessible**
 
@@ -187,7 +177,7 @@ The integration kit now uses a 2-step publishing flow per product: on-chain `add
    - Document recovery procedures
 
 4. **Security**
-   - Rotate credentials
+   - Rotate the API key periodically (revoke + regenerate from the dashboard)
    - Use HTTPS in production
    - Do not commit `.env`
 
